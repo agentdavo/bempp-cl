@@ -256,19 +256,42 @@ USE_JIT = True
 CPU_OPENCL_DRIVER_FOUND = False
 GPU_OPENCL_DRIVER_FOUND = False
 
-if _platform.system() == "Darwin":
+# Check for environment variable override first
+_env_device_interface = _os.environ.get("BEMPP_DEVICE_INTERFACE", "").lower()
+
+if _env_device_interface == "numba":
+    # User explicitly requested Numba backend
     DEFAULT_DEVICE_INTERFACE = "numba"
-else:
+elif _env_device_interface == "opencl":
+    # User explicitly requested OpenCL backend - still verify it's available
     try:
         from bempp_cl.core.opencl_kernels import find_cpu_driver
-
+        CPU_OPENCL_DRIVER_FOUND = find_cpu_driver()
+    except:  # noqa: E722
+        pass
+    try:
+        from bempp_cl.core.opencl_kernels import find_gpu_driver
+        GPU_OPENCL_DRIVER_FOUND = find_gpu_driver()
+    except:  # noqa: E722
+        pass
+    if CPU_OPENCL_DRIVER_FOUND or GPU_OPENCL_DRIVER_FOUND:
+        DEFAULT_DEVICE_INTERFACE = "opencl"
+    else:
+        log("OpenCL requested but no driver found. Falling back to Numba.")
+        DEFAULT_DEVICE_INTERFACE = "numba"
+elif _platform.system() == "Darwin":
+    # macOS defaults to Numba (OpenCL deprecated)
+    DEFAULT_DEVICE_INTERFACE = "numba"
+else:
+    # Auto-detect: prefer OpenCL if available
+    try:
+        from bempp_cl.core.opencl_kernels import find_cpu_driver
         CPU_OPENCL_DRIVER_FOUND = find_cpu_driver()
     except:  # noqa: E722
         pass
 
     try:
         from bempp_cl.core.opencl_kernels import find_gpu_driver
-
         GPU_OPENCL_DRIVER_FOUND = find_gpu_driver()
     except:  # noqa: E722
         pass

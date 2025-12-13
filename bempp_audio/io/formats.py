@@ -1,0 +1,385 @@
+"""
+Import/export for acoustic data formats.
+
+Supports common formats used in loudspeaker design software:
+- FRD (Frequency Response Data)
+- ZMA (Impedance)
+- FSIM (Jeff Bagby's tools, VituixCAD)
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Tuple, Optional, TYPE_CHECKING
+import numpy as np
+
+if TYPE_CHECKING:
+    from bempp_audio.results import FrequencyResponse, DirectivityBalloon
+
+
+class AcousticIO:
+    """
+    Import/export acoustic data in various formats.
+
+    Supports:
+    - FRD: Frequency Response Data (frequency, magnitude_dB, phase_deg)
+    - ZMA: Impedance data (frequency, magnitude, phase)
+    - FSIM: Simulation exchange format
+    - GLL: 3D directivity (EASE/AFMG format)
+    """
+
+    @staticmethod
+    def export_frd(
+        response: "FrequencyResponse",
+        filename: str,
+        point: np.ndarray,
+        ref: float = 20e-6,
+    ):
+        """
+        Export frequency response to FRD format.
+
+        FRD format is widely supported by crossover design software
+        like VituixCAD, XSim, PCD, etc.
+
+        Parameters
+        ----------
+        response : FrequencyResponse
+            The frequency response data.
+        filename : str
+            Output filename.
+        point : np.ndarray
+            Measurement point position (3,).
+        ref : float
+            Reference pressure (default 20 µPa).
+
+        Notes
+        -----
+        FRD format:
+        ```
+        freq  magnitude_dB  phase_deg
+        20.0  85.3  -45.2
+        ...
+        ```
+        """
+        freqs, spl = response.spl_at_point(point, ref)
+        _, phase = response.phase_at_point(point, unwrap=True)
+        phase_deg = np.degrees(phase)
+
+        with open(filename, "w") as f:
+            for freq, mag, ph in zip(freqs, spl, phase_deg):
+                f.write(f"{freq:.2f} {mag:.2f} {ph:.2f}\n")
+
+    @staticmethod
+    def import_frd(filename: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Import FRD file.
+
+        Parameters
+        ----------
+        filename : str
+            Path to FRD file.
+
+        Returns
+        -------
+        tuple
+            (frequencies, magnitude_dB, phase_deg)
+        """
+        data = np.loadtxt(filename)
+        if data.ndim == 1:
+            data = data.reshape(1, -1)
+
+        frequencies = data[:, 0]
+        magnitude_db = data[:, 1]
+        phase_deg = data[:, 2] if data.shape[1] > 2 else np.zeros_like(frequencies)
+
+        return frequencies, magnitude_db, phase_deg
+
+    @staticmethod
+    def export_zma(
+        response: "FrequencyResponse",
+        filename: str,
+    ):
+        """
+        Export impedance to ZMA format.
+
+        Parameters
+        ----------
+        response : FrequencyResponse
+            The frequency response data.
+        filename : str
+            Output filename.
+
+        Notes
+        -----
+        ZMA format:
+        ```
+        freq  |Z|  phase_deg
+        ```
+        """
+        freqs = response.frequencies
+        z_data = []
+
+        for result in response.results:
+            z = result.radiation_impedance().mechanical()
+            z_data.append(z)
+
+        z_data = np.array(z_data)
+        mag = np.abs(z_data)
+        phase_deg = np.degrees(np.angle(z_data))
+
+        with open(filename, "w") as f:
+            for freq, m, ph in zip(freqs, mag, phase_deg):
+                f.write(f"{freq:.2f} {m:.4e} {ph:.2f}\n")
+
+    @staticmethod
+    def import_zma(filename: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Import ZMA file.
+
+        Parameters
+        ----------
+        filename : str
+            Path to ZMA file.
+
+        Returns
+        -------
+        tuple
+            (frequencies, magnitude, phase_deg)
+        """
+        data = np.loadtxt(filename)
+        if data.ndim == 1:
+            data = data.reshape(1, -1)
+
+        frequencies = data[:, 0]
+        magnitude = data[:, 1]
+        phase_deg = data[:, 2] if data.shape[1] > 2 else np.zeros_like(frequencies)
+
+        return frequencies, magnitude, phase_deg
+
+    @staticmethod
+    def export_fsim(
+        response: "FrequencyResponse",
+        filename: str,
+        point: np.ndarray,
+        driver_params: Optional[dict] = None,
+    ):
+        """
+        Export to FSIM format for crossover design.
+
+        FSIM is compatible with Jeff Bagby's tools and VituixCAD.
+
+        Parameters
+        ----------
+        response : FrequencyResponse
+            The frequency response data.
+        filename : str
+            Output filename.
+        point : np.ndarray
+            Reference measurement point.
+        driver_params : dict, optional
+            Driver parameters (Re, Le, Bl, Mms, etc.).
+        """
+        freqs, spl = response.spl_at_point(point)
+        _, phase = response.phase_at_point(point, unwrap=True)
+        phase_deg = np.degrees(phase)
+
+        with open(filename, "w") as f:
+            # Header
+            f.write("* FSIM file generated by bempp-audio\n")
+            f.write(f"* {len(freqs)} frequency points\n")
+
+            if driver_params:
+                f.write(f"* Re={driver_params.get('Re', 'N/A')} Ohm\n")
+                f.write(f"* Sd={driver_params.get('Sd', 'N/A')} m^2\n")
+
+            f.write("*\n")
+            f.write("* Freq(Hz)  SPL(dB)  Phase(deg)\n")
+
+            for freq, mag, ph in zip(freqs, spl, phase_deg):
+                f.write(f"{freq:.4f}\t{mag:.4f}\t{ph:.4f}\n")
+
+    @staticmethod
+    def export_txt(
+        response: "FrequencyResponse",
+        filename: str,
+        point: np.ndarray,
+        delimiter: str = "\t",
+        header: bool = True,
+    ):
+        """
+        Export to generic text format.
+
+        Parameters
+        ----------
+        response : FrequencyResponse
+            The frequency response data.
+        filename : str
+            Output filename.
+        point : np.ndarray
+            Reference measurement point.
+        delimiter : str
+            Column delimiter.
+        header : bool
+            Include header row.
+        """
+        freqs, spl = response.spl_at_point(point)
+        _, phase = response.phase_at_point(point, unwrap=True)
+        phase_deg = np.degrees(phase)
+
+        with open(filename, "w") as f:
+            if header:
+                f.write(f"Frequency{delimiter}SPL_dB{delimiter}Phase_deg\n")
+
+            for freq, mag, ph in zip(freqs, spl, phase_deg):
+                f.write(f"{freq:.4f}{delimiter}{mag:.4f}{delimiter}{ph:.4f}\n")
+
+    @staticmethod
+    def export_csv(
+        response: "FrequencyResponse",
+        filename: str,
+        point: np.ndarray,
+    ):
+        """Export to CSV format."""
+        AcousticIO.export_txt(response, filename, point, delimiter=",", header=True)
+
+    @staticmethod
+    def export_balloon_gll(
+        balloon: "DirectivityBalloon",
+        filename: str,
+    ):
+        """
+        Export 3D directivity to GLL format.
+
+        GLL (Generic Loudspeaker Library) format is used by EASE, AFMG,
+        and other room acoustics software.
+
+        Parameters
+        ----------
+        balloon : DirectivityBalloon
+            3D directivity data.
+        filename : str
+            Output filename.
+        """
+        mag_db = balloon.magnitude_db(normalize=True)
+
+        with open(filename, "w") as f:
+            f.write(f"; GLL file generated by bempp-audio\n")
+            f.write(f"; Frequency: {balloon.frequency:.1f} Hz\n")
+            f.write(f"; Angles: theta (0-180), phi (0-360)\n")
+            f.write(";\n")
+
+            n_theta, n_phi = balloon.theta.shape
+
+            f.write(f"ANGLES {n_theta} {n_phi}\n")
+
+            # Write theta angles (first row of theta grid)
+            theta_deg = np.degrees(balloon.theta[:, 0])
+            f.write("THETA " + " ".join(f"{t:.1f}" for t in theta_deg) + "\n")
+
+            # Write phi angles (first column of phi grid)
+            phi_deg = np.degrees(balloon.phi[0, :])
+            f.write("PHI " + " ".join(f"{p:.1f}" for p in phi_deg) + "\n")
+
+            # Write data
+            f.write("DATA\n")
+            for i in range(n_theta):
+                row = " ".join(f"{mag_db[i, j]:.2f}" for j in range(n_phi))
+                f.write(row + "\n")
+
+    @staticmethod
+    def export_directivity_polar(
+        response: "FrequencyResponse",
+        filename: str,
+        frequencies: Optional[np.ndarray] = None,
+        plane: str = "xz",
+    ):
+        """
+        Export polar directivity at multiple frequencies.
+
+        Parameters
+        ----------
+        response : FrequencyResponse
+            The frequency response data.
+        filename : str
+            Output filename.
+        frequencies : np.ndarray, optional
+            Specific frequencies to export. If None, exports all.
+        plane : str
+            Measurement plane.
+        """
+        if frequencies is None:
+            # Use all frequencies
+            results = response.results
+        else:
+            # Find closest frequencies
+            results = []
+            for f in frequencies:
+                idx = np.argmin(np.abs(response.frequencies - f))
+                results.append(response.results[idx])
+
+        with open(filename, "w") as f:
+            f.write(f"; Polar directivity data\n")
+            f.write(f"; Plane: {plane}\n")
+            f.write("; Angles in degrees, levels in dB (normalized to 0 dB on-axis)\n")
+            f.write(";\n")
+
+            # Header with frequencies
+            f.write("Angle")
+            for result in results:
+                f.write(f"\t{result.frequency:.0f}Hz")
+            f.write("\n")
+
+            # Get directivity at 5-degree increments
+            n_angles = 73  # 0 to 360 in 5-degree steps
+            theta_deg = np.linspace(0, 360, n_angles)
+
+            for i, angle in enumerate(theta_deg):
+                f.write(f"{angle:.0f}")
+
+                for result in results:
+                    dp = result.directivity()
+                    theta_rad, pattern = dp.polar_2d(n_angles=n_angles, plane=plane)
+                    mag_db = 20 * np.log10(np.abs(pattern))
+                    mag_db -= mag_db.max()  # Normalize
+                    f.write(f"\t{mag_db[i]:.2f}")
+
+                f.write("\n")
+
+    @staticmethod
+    def import_measured(
+        filename: str,
+        file_type: str = "auto",
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Import measured data from various formats.
+
+        Parameters
+        ----------
+        filename : str
+            Path to measurement file.
+        file_type : str
+            File type: 'auto', 'frd', 'txt', 'csv'.
+
+        Returns
+        -------
+        tuple
+            (frequencies, magnitude_dB, phase_deg)
+        """
+        path = Path(filename)
+        ext = path.suffix.lower()
+
+        if file_type == "auto":
+            if ext in (".frd", ".txt"):
+                file_type = "frd"
+            elif ext == ".csv":
+                file_type = "csv"
+            else:
+                file_type = "frd"  # Default guess
+
+        if file_type == "frd":
+            return AcousticIO.import_frd(filename)
+        elif file_type == "csv":
+            data = np.loadtxt(filename, delimiter=",", skiprows=1)
+            return data[:, 0], data[:, 1], data[:, 2] if data.shape[1] > 2 else np.zeros(len(data))
+        else:
+            return AcousticIO.import_frd(filename)

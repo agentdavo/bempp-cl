@@ -137,3 +137,9 @@ mixed_dirichlet_neumann_laplace_solution.msh
 mixed_dirichlet_neumann_laplace_solution.vtk
 
 examples/*/convert-*
+
+# bempp_audio local outputs
+logs/
+waveguide_cts_mesh.html
+waveguide_cts_summary.png
+dolfin.txt

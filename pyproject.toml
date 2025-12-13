@@ -24,10 +24,11 @@ docs = ["sphinx-autoapi"]
 optional = ["matplotlib"]
 style = ["pydocstyle", "ruff"]
 test = ["pytest", "pytest-xdist", "bempp-cl[optional]"]
+audio = ["matplotlib", "plotly"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["bempp_cl*", "*.npz", "*.cl", "*.h"]
+include = ["bempp_cl*", "bempp_audio*", "*.npz", "*.cl", "*.h"]
 
 [tool.setuptools.package-data]
 "*" = ["*.npz", "*.cl", "*.h"]

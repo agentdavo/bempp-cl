@@ -1,9 +1,22 @@
 "Define fixtures and other test helpers."
 
 import os
+import sys
 
 import numpy as np
 import pytest
+
+# Ensure the repo root is on sys.path so local packages (e.g. bempp_audio) are importable
+# when running tests without an editable install.
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+# Numba caching can fail in some environments when trying to cache functions
+# from installed site-packages; force a writable cache directory for tests.
+_NUMBA_CACHE_DIR = os.path.join(os.path.dirname(__file__), ".numba_cache")
+os.makedirs(_NUMBA_CACHE_DIR, exist_ok=True)
+os.environ.setdefault("NUMBA_CACHE_DIR", _NUMBA_CACHE_DIR)
 
 import bempp_cl.api
 import bempp_cl.core

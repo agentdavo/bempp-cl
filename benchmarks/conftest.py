@@ -5,29 +5,49 @@ import os
 import numpy as np
 import pytest
 
-import bempp.api
-import bempp.core
+import bempp_cl.api
+import bempp_cl.core
+
+
+def _option_exists(parser, name):
+    """Check if a pytest option is already registered."""
+    try:
+        # Access the internal option storage
+        for opt in parser._anonymous.options:
+            if name in opt.names():
+                return True
+        for group in parser._groups:
+            for opt in group.options:
+                if name in opt.names():
+                    return True
+    except AttributeError:
+        pass
+    return False
 
 
 def pytest_addoption(parser):
-    parser.addoption(
-        "--vec",
-        action="store",
-        default="auto",
-        help="Valid values: auto novec vec4 vec8 vec16",
-    )
-    parser.addoption(
-        "--precision",
-        action="store",
-        default="double",
-        help="Valid values: single double",
-    )
-    parser.addoption(
-        "--device",
-        action="store",
-        default="auto",
-        help="Valid values: numba opencl",
-    )
+    # Guard against duplicate registration when collected with test/conftest.py
+    if not _option_exists(parser, "--vec"):
+        parser.addoption(
+            "--vec",
+            action="store",
+            default="auto",
+            help="Valid values: auto novec vec4 vec8 vec16",
+        )
+    if not _option_exists(parser, "--precision"):
+        parser.addoption(
+            "--precision",
+            action="store",
+            default="double",
+            help="Valid values: single double",
+        )
+    if not _option_exists(parser, "--device"):
+        parser.addoption(
+            "--device",
+            action="store",
+            default="auto",
+            help="Valid values: numba opencl",
+        )
 
 
 @pytest.fixture()
@@ -42,9 +62,9 @@ def set_default_device_interface(request):
     if value == "auto":
         return
     elif value == "numba":
-        bempp.api.DEFAULT_DEVICE_INTERFACE = "numba"
+        bempp_cl.api.DEFAULT_DEVICE_INTERFACE = "numba"
     elif value == "opencl":
-        bempp.api.DEFAULT_DEVICE_INTERFACE = "opencl"
+        bempp_cl.api.DEFAULT_DEVICE_INTERFACE = "opencl"
     else:
         raise ValueError("device must be one of: 'numba', 'opencl'")
 
@@ -55,7 +75,7 @@ def set_device_options(request):
     vec_mode = request.config.getoption("--vec")
     if vec_mode not in ["auto", "novec", "vec4", "vec8", "vec16"]:
         raise ValueError("vec must be one of: 'auto', 'novec', 'vec4', 'vec8', 'vec16'")
-    bempp.api.VECTORIZATION_MODE = vec_mode
+    bempp_cl.api.VECTORIZATION_MODE = vec_mode
 
 
 @pytest.fixture()
@@ -70,7 +90,7 @@ def precision(request):
 @pytest.fixture
 def two_element_grid():
     """Simple grid consisting of two elements."""
-    from bempp.api.grid import Grid
+    from bempp_cl.api.grid import Grid
 
     vertices = np.array([[0, 1, 1, 0], [0, 0, 1, 1], [0, 0, 0, 0]])
 
@@ -82,7 +102,7 @@ def two_element_grid():
 @pytest.fixture
 def default_parameters():
     """Return a default parameters object."""
-    from bempp.api.utils.parameters import DefaultParameters
+    from bempp_cl.api.utils.parameters import DefaultParameters
 
     parameters = DefaultParameters()
     parameters.quadrature.regular = 4
@@ -94,13 +114,13 @@ def default_parameters():
 @pytest.fixture
 def small_piecewise_const_space(small_sphere):
     """A simple piecewise constant space on a small sphere."""
-    return bempp.api.function_space(small_sphere, "DP", 0)
+    return bempp_cl.api.function_space(small_sphere, "DP", 0)
 
 
 @pytest.fixture
 def laplace_slp_small_sphere(small_piecewise_const_space, default_parameters):
     """The Laplace single layer operator on a small sphere."""
-    from bempp.api.operators.boundary.laplace import single_layer
+    from bempp_cl.api.operators.boundary.laplace import single_layer
 
     return single_layer(
         small_piecewise_const_space,
@@ -134,7 +154,7 @@ class Helpers(object):
     def load_grid(name):
         """Load grid stored as msh file (give name without ending)"""
         grid_name = os.path.join(Helpers.test_path(), "data/" + name + ".msh")
-        return bempp.api.import_grid(grid_name)
+        return bempp_cl.api.import_grid(grid_name)
 
     @staticmethod
     def test_path():

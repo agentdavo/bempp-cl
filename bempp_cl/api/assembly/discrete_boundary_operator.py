@@ -616,6 +616,8 @@ class _Solver(object):  # pylint: disable=too-few-public-methods
 
         if mat.shape[0] == mat.shape[1]:
             # Square matrix case
+            if not use_mkl_pardiso:
+                actual_mat = actual_mat.tocsc()
             solver = solver_interface(actual_mat)
             self._solve_fun = solver.solve
         elif mat.shape[0] > mat.shape[1]:
