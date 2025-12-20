@@ -13,6 +13,8 @@ PYTHON_BIN="${PYTHON_BIN:-}"
 if [[ -z "${PYTHON_BIN}" ]]; then
   if [[ -x "$ROOT_DIR/venv/bin/python" ]]; then
     PYTHON_BIN="$ROOT_DIR/venv/bin/python"
+    # Add venv/bin to PATH so gmsh and other tools are found
+    export PATH="$ROOT_DIR/venv/bin:$PATH"
   elif command -v python3 >/dev/null 2>&1; then
     PYTHON_BIN="$(command -v python3)"
   else

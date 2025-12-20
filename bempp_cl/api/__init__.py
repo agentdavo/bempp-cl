@@ -305,9 +305,11 @@ if DEFAULT_DEVICE_INTERFACE == "numba":
     log("Numba backend activated. For full performance the OpenCL backend with an OpenCL CPU driver is required.")
 
 DEFAULT_PRECISION = "double"
-VECTORIZATION_MODE = "auto"
+VECTORIZATION_MODE = _os.environ.get("BEMPP_VECTORIZATION_MODE", "auto")
 
-BOUNDARY_OPERATOR_DEVICE_TYPE = "cpu"
-POTENTIAL_OPERATOR_DEVICE_TYPE = "cpu"
+# Device type: "cpu" or "gpu" - can be set via BEMPP_DEVICE_TYPE env var
+_device_type = _os.environ.get("BEMPP_DEVICE_TYPE", "cpu").lower()
+BOUNDARY_OPERATOR_DEVICE_TYPE = _device_type
+POTENTIAL_OPERATOR_DEVICE_TYPE = _device_type
 
 ALL = -1  # Useful global identifier

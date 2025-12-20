@@ -126,8 +126,7 @@ def get_kernel_from_operator_descriptor(operator_descriptor, options, mode, forc
     precision = operator_descriptor.precision
     assembly_function, kernel_name = select_cl_kernel(operator_descriptor, mode=mode)
 
-    vec_length = get_vector_width(precision, device_type)
-    vec_string = get_vec_string(precision, device_type)
+    vec_length, vec_string = get_vec_width_and_string(precision, device_type)
 
     if not mode == "singular":
         if force_novec or vec_length == 1:
@@ -143,8 +142,7 @@ def get_kernel_from_operator_descriptor(operator_descriptor, options, mode, forc
 def get_kernel_from_name(name, options, precision="double", device_type="cpu"):
     """Return compiled kernel from name."""
 
-    vec_length = get_vector_width(precision, device_type)
-    vec_string = get_vec_string(precision, device_type)
+    vec_length, vec_string = get_vec_width_and_string(precision, device_type)
 
     options["VEC_LENGTH"] = vec_length
     options["VEC_STRING"] = vec_string
@@ -165,11 +163,28 @@ def get_vector_width(precision, device_type="cpu"):
         return mode_to_length[bempp_cl.api.VECTORIZATION_MODE]
 
 
-def get_vec_string(precision, device_type="cpu"):
-    """Return vectorisation string."""
+def get_vec_width_and_string(precision, device_type="cpu"):
+    """Return (vector_width, vectorisation_string) tuple."""
     vec_strings = {1: "novec", 4: "vec4", 8: "vec8", 16: "vec16"}
 
-    return vec_strings[get_vector_width(precision, device_type)]
+    width = get_vector_width(precision, device_type)
+    # Map unsupported widths (e.g., 2) to nearest supported width
+    if width not in vec_strings:
+        if width < 4:
+            width = 1  # Fall back to novec for small widths
+        elif width < 8:
+            width = 4
+        elif width < 16:
+            width = 8
+        else:
+            width = 16
+    return width, vec_strings[width]
+
+
+def get_vec_string(precision, device_type="cpu"):
+    """Return vectorisation string."""
+    _, vec_string = get_vec_width_and_string(precision, device_type)
+    return vec_string
 
 
 def default_cpu_device():
